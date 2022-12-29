@@ -1,62 +1,67 @@
 from core.config import settings
-# from crud.crud_url import url
+from crud import crud_url
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from model.database.database import get_session
 from model.models.url_model import URL, URLCreate, URLRead
 from requests import get
 from requests.exceptions import ConnectionError
-from secrets import token_urlsafe
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select, Session
 from typing import Any, List
 import validators
 
+
+URL_ADDRESS = f"{settings.SERVER_HOST}{settings.API_V1_STR}/url"
 router = APIRouter()
 
 
 @router.get("/", response_model=List[URLRead])
 def get_urls(db: Session = Depends(get_session)) -> Any:
     # tests = crud_url.get_multi(db)
-    urls = db.exec(select(URL).where(URL.is_active)).all()
+    urls = crud_url.url.get_urls(db)
+    # urls = db.exec(select(URL).where(URL.is_active)).all()
     return urls
 
 
 @router.post("/", response_model=URLRead)
-async def create_url(url_to_use: URLCreate, db: Session = Depends(get_session)) -> Any:
-    if not validators.url(url_to_use.target_url):
+async def create_url(url_in: URLCreate, db: Session = Depends(get_session)) -> Any:
+    if not validators.url(url_in.target_url):
         raise HTTPException(status_code=400,
                             detail="Provided URL was not valid.")
-    key = url_to_use.key
-    url = URL(
-        key=f"{settings.SERVER_HOST}{settings.API_V1_STR}/url/{key}",
-        secret_key=f"{settings.SERVER_HOST}{settings.API_V1_STR}/url/admin/{key}_{token_urlsafe(8)}",
-        target_url=url_to_use.target_url,
-    )
-
-    db_url = URL.from_orm(url)
-    db.add(db_url)
-    db.commit()
-    db.refresh(db_url)
-    return db_url
+    url = crud_url.url.create_url(url_in, db)
+    # key = url_in.key
+    # url = URL(
+    #     key=f"{URL_ADDRESS}/{key}",
+    #     secret_key=f"{URL_ADDRESS}/admin/{key}_{token_urlsafe(8)}",
+    #     target_url=url_in.target_url,
+    # )
+    #
+    # db_url = URL.from_orm(url)
+    # db.add(db_url)
+    # db.commit()
+    # db.refresh(db_url)
+    # return db_url
+    return url
 
 
 @router.get("/{url_key}")
 async def forward_to_target_url(url_key: str, request: Request, db: Session = Depends(get_session)) -> Any:
-    results = db.exec(select(URL).where(col(URLRead.key).contains(url_key), URL.is_active))
-    if results:
-        url = results.one()
-        url.clicks += 1
-        db.add(url)
-        db.commit()
-        db.refresh(url)
-        try:
-            url_check = get(url.target_url)
-        except ConnectionError:
-            raise HTTPException(status_code=404,
-                                detail=f"URL '{request.url}' does not exist")
-        else:
-            return RedirectResponse(url.target_url)
+    # results = db.exec(select(URL).where(col(URLRead.key).contains(url_key), URL.is_active))
+    url = crud_url.url.get_url(db, url_key)
+    # if results:
+    #     url = results.one()
+    #     url.clicks += 1
+    #     db.add(url)
+    #     db.commit()
+    #     db.refresh(url)
+    try:
+        url_check = get(url.target_url)
+    except ConnectionError:
+        raise HTTPException(status_code=404,
+                            detail=f"URL '{request.url}' does not exist")
+    else:
+        return RedirectResponse(url.target_url)
 
 
 @router.get("/admin/{secret_key}", response_model=URLRead)

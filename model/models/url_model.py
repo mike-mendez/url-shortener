@@ -6,6 +6,10 @@ from typing import Optional
 
 class URLBase(SQLModel):
     target_url: str = Field(nullable=False)
+    key: str = Field(default=f"{settings.SERVER_HOST}{settings.API_V1_STR}/url/{token_urlsafe(5)}",
+                     nullable=False,
+                     unique=True,
+                     index=True)
 
 
 class URL(URLBase, table=True):
@@ -16,10 +20,7 @@ class URL(URLBase, table=True):
 
 
 class URLCreate(URLBase):
-    key: str = Field(default=f"{settings.SERVER_HOST}{settings.API_V1_STR}/url/{token_urlsafe(5)}",
-                     nullable=False,
-                     unique=True,
-                     index=True)
+    pass
 
     class Config:
         orm_mode = True

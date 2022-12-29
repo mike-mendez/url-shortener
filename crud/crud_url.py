@@ -1,45 +1,45 @@
-from fastapi.encoders import jsonable_encoder
-from model.models.url_model import URL, URLBase, URLCreate, URLRead
-from pydantic import BaseModel
-from sqlmodel import Session
-from typing import List
+from core.config import settings
+from crud.base import CRUDBase
+from model.models.url_model import URL, URLCreate, URLRead
+from secrets import token_urlsafe
+from sqlmodel import col, select, Session
+from typing import Any, List, Optional
+
+URL_ADDRESS = f"{settings.SERVER_HOST}{settings.API_V1_STR}/url"
 
 
-class CRUDurl(BaseModel):
-    def get_all(self):
-        pass
+class CRUDurl(CRUDBase[URL, URLCreate, URLCreate]):
 
-    def get_one_by_secret_key(self):
-        pass
+    def get_urls(self, db: Session) -> List[URL]:
+        urls = db.exec(select(self.model).where(self.model.is_active)).all()
+        return urls
 
-    def
+    def get_url(self, db: Session, url_key: str) -> Optional[URL]:
+        results = db.exec(select(self.model).where(col(self.model.key).contains(url_key), self.model.is_active))
+        if results:
+            forwarded_url = results.one()
+            forwarded_url.clicks += 1
+            db.add(forwarded_url)
+            db.commit()
+            db.refresh(forwarded_url)
+            return forwarded_url
 
-    # def get_all(self):
-    #     pass
-    # def get_by_secret_key(self):
-    #     pass
-    # def create(
-    #         self, db: Session, *, obj_in: URLCreate, owner_id: int
-    # ) -> URLBase:
-    #     obj_in_data = jsonable_encoder(obj_in)
-    #     db_obj = self.model(**obj_in_data, owner_id=owner_id)
-    #     db.add(db_obj)
-    #     db.commit()
-    #     db.refresh(db_obj)
-    #     return db_obj
-    #
-    # def get_multi(
-    #         self, db: Session, *, owner_id: int, skip: int = 0, limit: int = 100
-    # ) -> List[URLBase]:
-    #     return (
-    #         db.query(self.model)
-    #         .filter( == owner_id)
-    #         .offset(skip)
-    #         .limit(limit)
-    #         .all()
-    #     )
+    def create_url(self, obj_in: URLCreate, db: Session) -> URL:
+        # obj_in_data = jsonable_encoder(obj_in)
+        # key = obj_in_data.key
+        key = obj_in.key
+        url_in = self.model(
+            key=f"{URL_ADDRESS}/{key}",
+            secret_key=f"{URL_ADDRESS}/admin/{key}_{token_urlsafe(8)}",
+            # target_url=obj_in_data.target_url,
+            target_url=obj_in.target_url,
+        )
 
-
-url = CRUDurl()
+        db_url = self.model.from_orm(url_in)
+        db.add(db_url)
+        db.commit()
+        db.refresh(db_url)
+        return db_url
 
 
+url = CRUDurl(URL)
